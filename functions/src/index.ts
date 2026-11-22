@@ -10,6 +10,7 @@ const PESAPAL_KEY = defineSecret("PESAPAL_CONSUMER_KEY");
 const PESAPAL_SECRET = defineSecret("PESAPAL_CONSUMER_SECRET");
 const PESAPAL_BASE = defineSecret("PESAPAL_BASE_URL");
 const PESAPAL_IPN = defineSecret("PESAPAL_IPN_ID");
+const RENTO_CALLBACK = defineSecret("RENTO_CHECKOUT_CALLBACK_URL");
 
 async function pesapalToken(): Promise<string> {
   const response = await fetch(`${PESAPAL_BASE.value()}/api/Auth/RequestToken`, {
@@ -23,7 +24,7 @@ async function pesapalToken(): Promise<string> {
 }
 
 /** Authenticated callable. Creates a pending order only; it never credits a wallet. */
-export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET, PESAPAL_BASE, PESAPAL_IPN] }, async (request) => {
+export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET, PESAPAL_BASE, PESAPAL_IPN, RENTO_CALLBACK] }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required");
   const amount = Number(request.data?.amount);
   if (!Number.isSafeInteger(amount) || amount < 1000 || amount > 50000000) throw new HttpsError("invalid-argument", "Amount must be UGX 1,000–50,000,000");
@@ -38,7 +39,7 @@ export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET
     body: JSON.stringify({
       id: merchantReference, currency: "UGX", amount,
       description: "Rento wallet top-up",
-      callback_url: "https://example.invalid/pesapal/return",
+      callback_url: RENTO_CALLBACK.value(),
       notification_id: PESAPAL_IPN.value(),
       billing_address: { email_address: user.email, phone_number: user.phone, first_name: user.name }
     })
@@ -67,7 +68,7 @@ export const pesapalIPNListener = onRequest({ secrets: [PESAPAL_KEY, PESAPAL_SEC
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
     });
     if (!verify.ok) { res.status(502).send("Verification unavailable"); return; }
-    const status = await verify.json() as { payment_status_description?: string; status_code?: number; currency?: string; amount?: number };
+    const status = await verify.json() as { payment_status_description?: string; currency?: string; amount?: number };
     const txRef = db.collection("wallet_transactions").doc(trackingId);
     await db.runTransaction(async (t) => {
       const tx = await t.get(txRef);
@@ -90,7 +91,7 @@ export const pesapalIPNListener = onRequest({ secrets: [PESAPAL_KEY, PESAPAL_SEC
   }
 });
 
-// Withdrawal is deliberately disabled until Pesapal enables and documents the merchant's payout product.
+// Payouts remain off until Pesapal confirms payout product access and its API contract for this merchant.
 export const initiateWithdrawal = onCall(async () => {
-  throw new HttpsError("failed-precondition", "Withdrawals are disabled until Pesapal payout access, destination validation and settlement reconciliation are configured for this merchant.");
+  throw new HttpsError("failed-precondition", "Withdrawals are disabled pending Pesapal payout approval and end-to-end reconciliation tests.");
 });

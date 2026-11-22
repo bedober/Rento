@@ -23,7 +23,6 @@ async function pesapalToken(): Promise<string> {
   return data.token;
 }
 
-/** Authenticated callable. Creates a pending order only; it never credits a wallet. */
 export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET, PESAPAL_BASE, PESAPAL_IPN, RENTO_CALLBACK] }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required");
   const amount = Number(request.data?.amount);
@@ -37,10 +36,8 @@ export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET
   const orderResponse = await fetch(`${PESAPAL_BASE.value()}/api/Transactions/SubmitOrderRequest`, {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
-      id: merchantReference, currency: "UGX", amount,
-      description: "Rento wallet top-up",
-      callback_url: RENTO_CALLBACK.value(),
-      notification_id: PESAPAL_IPN.value(),
+      id: merchantReference, currency: "UGX", amount, description: "Rento wallet top-up",
+      callback_url: RENTO_CALLBACK.value(), notification_id: PESAPAL_IPN.value(),
       billing_address: { email_address: user.email, phone_number: user.phone, first_name: user.name }
     })
   });
@@ -58,7 +55,6 @@ export const createPesapalOrder = onCall({ secrets: [PESAPAL_KEY, PESAPAL_SECRET
   return { trackingId: order.order_tracking_id, redirectUrl: order.redirect_url, status: "PENDING" };
 });
 
-/** Public IPN endpoint. Verify status directly with Pesapal before a single atomic credit. */
 export const pesapalIPNListener = onRequest({ secrets: [PESAPAL_KEY, PESAPAL_SECRET, PESAPAL_BASE] }, async (req, res) => {
   try {
     const trackingId = String(req.body?.OrderTrackingId ?? req.query.OrderTrackingId ?? "");
@@ -91,7 +87,46 @@ export const pesapalIPNListener = onRequest({ secrets: [PESAPAL_KEY, PESAPAL_SEC
   }
 });
 
-// Payouts remain off until Pesapal confirms payout product access and its API contract for this merchant.
+/** Atomically settles a pending rent invoice from the authenticated tenant's wallet. */
+export const payRentFromWallet = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required");
+  const invoiceId = String(request.data?.invoiceId ?? "");
+  if (!/^[A-Za-z0-9_-]{4,100}$/.test(invoiceId)) throw new HttpsError("invalid-argument", "Invalid invoice ID");
+  const tenantUid = request.auth.uid;
+  const invoiceRef = db.doc(`rent_invoices/${invoiceId}`);
+  const tenantWalletRef = db.doc(`wallets/${tenantUid}`);
+  const ledgerRef = db.doc(`wallet_transactions/rent_${invoiceId}`);
+  return db.runTransaction(async (tx) => {
+    const [invoiceSnap, tenantWalletSnap, ledgerSnap] = await Promise.all([
+      tx.get(invoiceRef), tx.get(tenantWalletRef), tx.get(ledgerRef)
+    ]);
+    if (!invoiceSnap.exists) throw new HttpsError("not-found", "Rent invoice not found");
+    if (ledgerSnap.exists) throw new HttpsError("already-exists", "This invoice already has a payment record");
+    const invoice = invoiceSnap.data()!;
+    if (invoice.tenantUid !== tenantUid) throw new HttpsError("permission-denied", "Invoice does not belong to you");
+    if (invoice.status === "PAID") throw new HttpsError("already-exists", "Rent is already paid");
+    if (invoice.status !== "PENDING" && invoice.status !== "OVERDUE") throw new HttpsError("failed-precondition", "Invoice cannot be paid");
+    const amount = Number(invoice.amountUgx);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new HttpsError("failed-precondition", "Invalid invoice amount");
+    const tenantBalance = Number(tenantWalletSnap.data()?.balance ?? 0);
+    if (!Number.isSafeInteger(tenantBalance) || tenantBalance < amount) throw new HttpsError("failed-precondition", "Insufficient wallet balance");
+    const landlordUid = String(invoice.landlordUid ?? "");
+    if (!landlordUid || landlordUid === tenantUid) throw new HttpsError("failed-precondition", "Invalid landlord wallet");
+    const landlordWalletRef = db.doc(`wallets/${landlordUid}`);
+    const landlordSnap = await tx.get(landlordWalletRef);
+    const landlordBalance = Number(landlordSnap.data()?.balance ?? 0);
+    if (!Number.isSafeInteger(landlordBalance) || landlordBalance < 0) throw new HttpsError("failed-precondition", "Landlord wallet is invalid");
+    const now = FieldValue.serverTimestamp();
+    tx.set(tenantWalletRef, { balance: tenantBalance - amount, updatedAt: now }, { merge: true });
+    tx.set(landlordWalletRef, { balance: landlordBalance + amount, updatedAt: now }, { merge: true });
+    tx.update(invoiceRef, { status: "PAID", paidAt: now, paidBy: tenantUid, paidAmountUgx: amount });
+    tx.create(ledgerRef, { userId: tenantUid, counterpartyUid: landlordUid, type: "RENT_PAYMENT", amountUgx: amount, currency: "UGX", status: "COMPLETED", invoiceId, createdAt: now, source: "INTERNAL_WALLET" });
+    tx.create(db.doc(`wallet_audit/${invoiceId}`), { tenantUid, landlordUid, invoiceId, amountUgx: amount, action: "RENT_SETTLED", createdAt: now });
+    return { invoiceId, amountUgx: amount, status: "PAID" };
+  });
+});
+
+// Payouts remain disabled until Pesapal confirms and enables this merchant's payout product.
 export const initiateWithdrawal = onCall(async () => {
-  throw new HttpsError("failed-precondition", "Withdrawals are disabled pending Pesapal payout approval and end-to-end reconciliation tests.");
+  throw new HttpsError("failed-precondition", "Withdrawals are disabled pending Pesapal payout approval and provider-specific integration.");
 });

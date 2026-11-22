@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','walletBalance','kycStatus']);
+      allow delete: if false;
+    }
+    // Financial records are server-owned. Android clients cannot write balances or ledger rows.
+    match /wallets/{uid} { allow read: if isSelf(uid); allow write: if false; }
+    match /wallet_transactions/{id} { allow read: if signedIn() && resource.data.userId == request.auth.uid; allow write: if false; }
+    match /properties/{id} { allow read: if signedIn(); allow write: if false; }
+    match /units/{id} { allow read: if signedIn(); allow write: if false; }
+    match /rent_payments/{id} { allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid); allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

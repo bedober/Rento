@@ -3,7 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
-    id("com.google.gms.google-services")
 }
 android {
     namespace = "com.bedober.rento"
@@ -25,7 +24,6 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.03.00")
     implementation(composeBom)
-    androidTestImplementation(composeBom)
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.ui:ui")
@@ -42,10 +40,10 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.55")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
-    implementation("com.google.firebase:firebase-auth-ktx")
-    implementation("com.google.firebase:firebase-firestore-ktx")
-    implementation("com.google.firebase:firebase-messaging-ktx")
-    implementation("com.google.firebase:firebase-storage-ktx")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-storage")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("androidx.biometric:biometric:1.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")

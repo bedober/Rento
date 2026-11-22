@@ -42,15 +42,15 @@ private fun RentoApp() {
         UnitCard("H-01", "Rento Hostel", 180000, "Mary A.", "Occupied"),
         UnitCard("H-02", "Rento Hostel", 180000, "Vacant", "Vacant")
     ) }
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                listOf("Home", "Properties", "Wallet", "Payments", "More").forEach { item ->
-                    NavigationBarItem(selected = tab == item, onClick = { tab = item }, icon = { Text(when(item) { "Home" -> "⌂"; "Properties" -> "▦"; "Wallet" -> "◉"; "Payments" -> "↔"; else -> "⋯" }) }, label = { Text(item) })
-                }
+    Scaffold(bottomBar = {
+        NavigationBar {
+            listOf("Home", "Properties", "Wallet", "Payments", "More").forEach { destination ->
+                NavigationBarItem(selected = tab == destination, onClick = { tab = destination },
+                    icon = { Text(when(destination) { "Home" -> "⌂"; "Properties" -> "▦"; "Wallet" -> "◉"; "Payments" -> "↔"; else -> "⋯" }) },
+                    label = { Text(destination) })
             }
         }
-    ) { padding ->
+    }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item {
                 Text("Rento", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = RentoGreen)
@@ -59,62 +59,69 @@ private fun RentoApp() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("View as", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(12.dp))
-                    listOf("Landlord", "Tenant", "Caretaker").forEach { r ->
-                        FilterChip(selected = role == r, onClick = { role = r }, label = { Text(r) }, modifier = Modifier.padding(end = 4.dp))
+                    listOf("Landlord", "Tenant", "Caretaker").forEach { selectedRole ->
+                        FilterChip(selected = role == selectedRole, onClick = { role = selectedRole }, label = { Text(selectedRole) }, modifier = Modifier.padding(end = 4.dp))
                     }
                 }
             }
-            if (tab == "Home" || tab == "Wallet") {
-                item {
-                    Card(colors = CardDefaults.cardColors(containerColor = RentoGreen), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(20.dp)) {
-                            Text(if (role == "Tenant") "My wallet" else "Wallet balance", color = Color.White)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (showBalance) "UGX 2,450,000" else "UGX ••••••", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.weight(1f))
-                                TextButton(onClick = { showBalance = !showBalance }) { Text(if (showBalance) "Hide" else "Show", color = Color.White) }
+            when (tab) {
+                "Home", "Wallet" -> {
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = RentoGreen), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(20.dp)) {
+                                Text(if (role == "Tenant") "My wallet" else "Wallet balance", color = Color.White)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (showBalance) "UGX 2,450,000" else "UGX ••••••", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = { showBalance = !showBalance }) { Text(if (showBalance) "Hide" else "Show", color = Color.White) }
+                                }
+                                Text("Demo balance · Not real money", color = Color.White.copy(alpha = .8f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { tab = "Wallet" }) { Text("Top up", color = Color.White) }
+                                    OutlinedButton(onClick = { tab = "Payments" }) { Text("Transactions", color = Color.White) }
+                                }
                             }
-                            Text("Demo balance · Not real money", color = Color.White.copy(alpha = .8f))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { tab = "Wallet" }) { Text("Top up", color = Color.White) }
-                                OutlinedButton(onClick = { tab = "Payments" }) { Text("Transactions", color = Color.White) }
+                        }
+                    }
+                    item { Text(if (role == "Tenant") "My rent" else "Portfolio overview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Metric("Properties", "2")
+                            Metric("Units", "5")
+                            Metric("Occupied", "60%")
+                        }
+                    }
+                    item { Metric("Expected monthly rent", "UGX 1,780,000", Modifier.fillMaxWidth()) }
+                    item { Text("Recent units", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    items(units) { unit ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row { Text(unit.number, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(unit.status, color = if (unit.status == "Occupied") RentoGreen else Color.Gray) }
+                                Text(unit.property, color = Color.Gray)
+                                Text(unit.tenant)
+                                Text("UGX " + "%,d".format(unit.rent) + " / month")
                             }
                         }
                     }
                 }
-                item { Text(if (role == "Tenant") "My rent" else "Portfolio overview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Metric("Properties", "2")
-                        Metric("Units", "5")
-                        Metric("Occupied", "60%")
+                "Properties" -> {
+                    item { Text("Properties & units", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+                    item { Button(onClick = { }) { Text("＋ Add property") } }
+                    items(units) { unit ->
+                        Card { Column(Modifier.padding(16.dp)) { Text("${unit.property} · ${unit.number}", fontWeight = FontWeight.Bold); Text("${unit.status} · UGX ${"%,d".format(unit.rent)}") } }
                     }
                 }
-                item { Metric("Expected monthly rent", "UGX 1,780,000", Modifier.fillMaxWidth()) }
-                item { Text("Recent units", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                items(units) { unit ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Row { Text(unit.number, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(unit.status, color = if (unit.status == "Occupied") RentoGreen else Color.Gray) }
-                            Text(unit.property, color = Color.Gray)
-                            Text(unit.tenant)
-                            Text("UGX " + "%,d".format(unit.rent) + " / month")
-                        }
+                "Payments" -> {
+                    item { Text("Rent payments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+                    item { Text("No live payments in demo. Connect Firebase and Pesapal sandbox to test transactions.") }
+                    item { Button(onClick = { }) { Text("Pay rent (demo flow)") } }
+                }
+                else -> {
+                    item { Text("More", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+                    items(listOf("Tenants", "Maintenance", "Announcements & chat", "Reports", "Profile & KYC", "Settings")) { entry ->
+                        ListItem(headlineContent = { Text(entry) }, trailingContent = { Text("›") })
                     }
                 }
-            } else if (tab == "Properties") {
-                item { Text("Properties & units", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-                item { Button(onClick = { }) { Text("＋ Add property") } }
-                items(units) { u -> Card { Column(Modifier.padding(16.dp)) { Text("${u.property} · ${u.number}", fontWeight = FontWeight.Bold); Text("${u.status} · UGX ${"%,d".format(u.rent)}") } } }
-            } else if (tab == "Wallet") {
-                item { Text("Wallet activity", style = MaterialTheme.typography.headlineSmall) }
-            } else if (tab == "Payments") {
-                item { Text("Rent payments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-                item { Text("No live payments in demo. Connect Firebase and Pesapal sandbox to test transactions.") }
-                item { Button(onClick = { }) { Text("Pay rent (demo flow)") } }
-            } else {
-                item { Text("More", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-                listOf("Tenants", "Maintenance", "Announcements & chat", "Reports", "Profile & KYC", "Settings").forEach { item -> item { ListItem(headlineContent = { Text(item) }, trailingContent = { Text("›") }) } }
             }
         }
     }

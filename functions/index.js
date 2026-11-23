@@ -17,7 +17,13 @@ const PESAPAL_IPN_URL=defineSecret("PESAPAL_IPN_URL");
 const PESAPAL_CALLBACK_URL=defineSecret("PESAPAL_CALLBACK_URL");
 const PESAPAL_IPN_ID=defineSecret("PESAPAL_IPN_ID");
 
-function baseUrl(){return (PESAPAL_BASE.value()||"https://cybqa.pesapal.com/pesapalv3").replace(/\/$/,"");}
+function baseUrl(){
+ const configured=PESAPAL_BASE.value();
+ if(!configured) throw new Error("PESAPAL_BASE_URL is required; sandbox/live mode must be explicit");
+ let parsed; try{parsed=new URL(configured);}catch(_){throw new Error("PESAPAL_BASE_URL is invalid");}
+ if(parsed.protocol!=="https:"||!["pay.pesapal.com","cybqa.pesapal.com"].includes(parsed.hostname)) throw new Error("PESAPAL_BASE_URL must use an official Pesapal HTTPS API host");
+ return configured.replace(/\\/$/,"");
+}
 async function token(){
  const r=await fetch(baseUrl()+"/api/Auth/RequestToken",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({consumer_key:PESAPAL_KEY.value(),consumer_secret:PESAPAL_SECRET.value()})});
  if(!r.ok) throw new Error("Pesapal authentication failed ("+r.status+")");
@@ -56,8 +62,8 @@ exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_B
  const amount=Number(req.data?.amount); if(!Number.isSafeInteger(amount)||amount<1000||amount>50000000) throw new HttpsError("invalid-argument","Top-up must be UGX 1,000 to 50,000,000");
  const email=String(req.data?.email||user.email||""); const phone=String(req.data?.phone||user.phone||"");
  if(!email||!phone||!user.name) throw new HttpsError("failed-precondition","Complete your name, email and phone first");
- const t=await token(); let ipnId=process.env.PESAPAL_IPN_ID;
- if(!ipnId) ipnId=await registerIpn(t);
+ const t=await token(); const ipnId=PESAPAL_IPN_ID.value();
+ if(!ipnId) throw new HttpsError("failed-precondition","Register your Pesapal IPN and configure PESAPAL_IPN_ID in Secret Manager");
  const ref="RNT-"+uid.slice(0,8)+"-"+Date.now();
  const origin=PESAPAL_CALLBACK_URL.value();
  if(!origin) throw new HttpsError("failed-precondition","PESAPAL_CALLBACK_URL is not configured");

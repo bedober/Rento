@@ -2,19 +2,58 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
-    match /users/{uid} {
-      allow read: if isSelf(uid);
-      allow create: if isSelf(uid);
-      allow update: if isSelf(uid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','walletBalance','kycStatus']);
-      allow delete: if false;
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function role() { return signedIn() && userDoc().data.role != null ? userDoc().data.role : ""; }
+    function admin() { return signedIn() && (role() == "SUPER_ADMIN" || request.auth.token.role == "SUPER_ADMIN"); }
+    function landlordOf(propertyId) {
+      return signedIn() && get(/databases/$(database)/documents/properties/$(propertyId)).data.landlordId == request.auth.uid;
     }
-    // Financial records are server-owned. Android clients cannot write balances or ledger rows.
-    match /wallets/{uid} { allow read: if isSelf(uid); allow write: if false; }
-    match /wallet_transactions/{id} { allow read: if signedIn() && resource.data.userId == request.auth.uid; allow write: if false; }
-    match /properties/{id} { allow read: if signedIn(); allow write: if false; }
-    match /units/{id} { allow read: if signedIn(); allow write: if false; }
-    match /rent_payments/{id} { allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid); allow write: if false; }
+    match /app_config/{id} {
+      allow read: if signedIn();
+      allow write: if false; // All config mutation is validated by updateAppConfig callable.
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role in ["UNSELECTED","TENANT","LANDLORD","CARETAKER"];
+      allow update: if signedIn() && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["role","walletBalance","kycStatus","nationalId"]);
+      allow delete: if admin();
+    }
+    match /wallets/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      allow write: if false;
+    }
+    match /wallet_transactions/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || resource.data.counterpartyUid == request.auth.uid || admin());
+      allow write: if false;
+    }
+    match /rent_invoices/{id} {
+      allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid || admin());
+      allow write: if false;
+    }
+    match /properties/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && request.resource.data.landlordId == request.auth.uid));
+    }
+    match /units/{id} {
+      allow read: if signedIn();
+      allow write: if signedIn() && (admin() || role() == "LANDLORD");
+    }
+    match /maintenance/{id} {
+      allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid || admin());
+      allow create: if signedIn() && request.resource.data.tenantId == request.auth.uid;
+      allow update: if signedIn() && (resource.data.landlordId == request.auth.uid || admin());
+      allow delete: if admin();
+    }
+    match /conversations/{id}/messages/{messageId} {
+      allow read, create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(id)).data.participantUids;
+      allow update, delete: if false;
+    }
+    match /announcements/{id} {
+      allow read: if signedIn();
+      allow write: if signedIn() && (role() == "LANDLORD" || admin());
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

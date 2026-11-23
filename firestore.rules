@@ -34,11 +34,15 @@ service cloud.firestore {
     }
     match /properties/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && request.resource.data.landlordId == request.auth.uid && (request.method == "create" || resource.data.landlordId == request.auth.uid)));
+      allow create: if signedIn() && (admin() || (role() == "LANDLORD" && request.resource.data.landlordId == request.auth.uid));
+      allow update: if signedIn() && (admin() || (role() == "LANDLORD" && resource.data.landlordId == request.auth.uid && request.resource.data.landlordId == request.auth.uid));
+      allow delete: if signedIn() && (admin() || (role() == "LANDLORD" && resource.data.landlordId == request.auth.uid));
     }
     match /units/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.landlordId == request.auth.uid));
+      allow create: if signedIn() && (admin() || (role() == "LANDLORD" && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.landlordId == request.auth.uid));
+      allow update: if signedIn() && (admin() || (role() == "LANDLORD" && get(/databases/$(database)/documents/properties/$(resource.data.propertyId)).data.landlordId == request.auth.uid && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.landlordId == request.auth.uid));
+      allow delete: if signedIn() && (admin() || (role() == "LANDLORD" && get(/databases/$(database)/documents/properties/$(resource.data.propertyId)).data.landlordId == request.auth.uid));
     }
     match /maintenance/{id} {
       allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid || admin());

@@ -1,6 +1,15 @@
 package com.bedober.rento
 
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -20,14 +29,62 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class MainActivity : ComponentActivity() {
+    private lateinit var updateManager: AppUpdateManager
+    private val updateDownloaded = mutableStateOf(false)
+    private val updateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != RESULT_OK) {
+            // The app remains usable; Play may offer the update again later.
+        }
+    }
+    private val installListener = InstallStateUpdatedListener { state ->
+        if (state.installStatus() == InstallStatus.DOWNLOADED) updateDownloaded.value = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF087A43))) { ProductionRentoApp() } }
+        updateManager = AppUpdateManagerFactory.create(this)
+        updateManager.registerListener(installListener)
+        setContent {
+            MaterialTheme(colorScheme = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF087A43))) {
+                ProductionRentoApp(
+                    updateDownloaded = updateDownloaded.value,
+                    onInstallUpdate = { updateManager.completeUpdate() }
+                )
+            }
+        }
+        checkForPlayUpdate()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::updateManager.isInitialized) {
+            updateManager.appUpdateInfo.addOnSuccessListener { info ->
+                if (info.installStatus() == InstallStatus.DOWNLOADED) updateDownloaded.value = true
+            }
+        }
+    }
+
+    private fun checkForPlayUpdate() {
+        updateManager.appUpdateInfo.addOnSuccessListener { info ->
+            if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) {
+                updateManager.startUpdateFlowForResult(
+                    info,
+                    updateLauncher,
+                    AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
+                )
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (::updateManager.isInitialized) updateManager.unregisterListener(installListener)
+        super.onDestroy()
     }
 }
 
 @Composable
-private fun ProductionRentoApp() {
+private fun ProductionRentoApp(updateDownloaded: Boolean, onInstallUpdate: () -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     val functions = remember { FirebaseFunctions.getInstance() }
@@ -73,6 +130,18 @@ private fun ProductionRentoApp() {
             status = ""
             try { task() } catch (e: Exception) { status = e.localizedMessage ?: "Request failed" }
             finally { busy = false }
+        }
+    }
+
+    if (updateDownloaded) {
+        Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Rento update downloaded", fontWeight = FontWeight.Bold)
+                    Text("Install now to restart with the latest version. Your account and app data stay on this device.", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = onInstallUpdate) { Text("Install") }
+            }
         }
     }
 

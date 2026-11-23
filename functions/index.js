@@ -15,6 +15,7 @@ const AT_KEY=defineSecret("AT_API_KEY");
 const AT_USERNAME=defineSecret("AT_USERNAME");
 const PESAPAL_IPN_URL=defineSecret("PESAPAL_IPN_URL");
 const PESAPAL_CALLBACK_URL=defineSecret("PESAPAL_CALLBACK_URL");
+const PESAPAL_IPN_ID=defineSecret("PESAPAL_IPN_ID");
 
 function baseUrl(){return (PESAPAL_BASE.value()||"https://cybqa.pesapal.com/pesapalv3").replace(/\/$/,"");}
 async function token(){
@@ -50,7 +51,7 @@ exports.updateAppConfig=onCall(async req=>{
  clean.updatedAt=FieldValue.serverTimestamp(); clean.updatedBy=req.auth.uid;
  await db.doc("app_config/global").set(clean,{merge:true}); return {success:true};
 });
-exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_BASE,PESAPAL_IPN_URL,PESAPAL_CALLBACK_URL]},async req=>{
+exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_BASE,PESAPAL_IPN_URL,PESAPAL_IPN_ID,PESAPAL_CALLBACK_URL]},async req=>{
  const {uid,user}=await requireRole(req,["LANDLORD","TENANT","CARETAKER"]);
  const amount=Number(req.data?.amount); if(!Number.isSafeInteger(amount)||amount<1000||amount>50000000) throw new HttpsError("invalid-argument","Top-up must be UGX 1,000 to 50,000,000");
  const email=String(req.data?.email||user.email||""); const phone=String(req.data?.phone||user.phone||"");

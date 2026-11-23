@@ -69,6 +69,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:19.1.0")
     implementation("com.google.maps.android:maps-compose:6.4.1")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
     implementation("com.itextpdf:itext-core:8.0.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

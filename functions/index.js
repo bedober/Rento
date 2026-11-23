@@ -178,3 +178,19 @@ exports.getAdminDashboardStats=onCall(async req=>{
  const roles=users.docs.reduce((a,d)=>{const k=d.get("role")||"UNSELECTED";a[k]=(a[k]||0)+1;return a;},{});
  return {totalUsers:users.size,landlords:roles.LANDLORD||0,tenants:roles.TENANT||0,caretakers:roles.CARETAKER||0,totalWalletBalance:walletBalance,pesapalVolumeToday:volumeToday,pesapalVolumeMonth:volumeMonth,failedTransactions:failed,activeProperties:properties.docs.filter(d=>d.get("archived")!==true).length};
 });
+
+
+exports.selectUserRole=onCall(async req=>{
+ if(!req.auth) throw new HttpsError("unauthenticated","Sign in required");
+ const role=String(req.data?.role||"").toUpperCase();
+ if(!["LANDLORD","TENANT"].includes(role)) throw new HttpsError("invalid-argument","Choose Landlord or Tenant. Caretaker access requires administrator approval.");
+ const ref=db.doc("users/"+req.auth.uid);
+ await db.runTransaction(async tr=>{
+  const snap=await tr.get(ref);
+  if(!snap.exists) throw new HttpsError("failed-precondition","Complete account registration first");
+  const current=String(snap.get("role")||"UNSELECTED");
+  if(current!=="UNSELECTED" && current!==role) throw new HttpsError("failed-precondition","Role can only be selected once. Contact support to change it.");
+  tr.set(ref,{role,roleSelectedAt:FieldValue.serverTimestamp()},{merge:true});
+ });
+ return {success:true,role};
+});

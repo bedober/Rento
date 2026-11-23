@@ -1,0 +1,3 @@
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.android.gms.**

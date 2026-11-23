@@ -13,7 +13,7 @@ android {
         applicationId = "com.siege.rento"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
+        versionCode = (System.getenv("PLAY_VERSION_CODE") ?: "1").toInt()
         versionName = "1.0.0"
     }
     signingConfigs {

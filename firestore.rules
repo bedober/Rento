@@ -17,7 +17,10 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role in ["UNSELECTED","TENANT","LANDLORD","CARETAKER"];
       allow update: if signedIn() && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["role","walletBalance","kycStatus","nationalId"]);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["walletBalance","kycStatus","nationalId"])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["role"])
+            || (resource.data.role == "UNSELECTED"
+                && request.resource.data.role in ["TENANT","LANDLORD","CARETAKER"]));
       allow delete: if admin();
     }
     match /wallets/{uid} {

@@ -48,19 +48,22 @@ private fun ProductionRentoApp() {
         auth.addAuthStateListener(listener)
         onDispose { auth.removeAuthStateListener(listener) }
     }
-    LaunchedEffect(currentUser?.uid) {
-        val uid = currentUser?.uid ?: return@LaunchedEffect
-        val profile = db.collection("users").document(uid)
-        val registration = profile.addSnapshotListener { snap, error ->
-            if (error != null) status = error.localizedMessage ?: "Unable to load profile"
-            role = snap?.getString("role") ?: "UNSELECTED"
+    DisposableEffect(currentUser?.uid) {
+        val uid = currentUser?.uid
+        if (uid == null) {
+            role = ""
+            balance = null
+            onDispose { }
+        } else {
+            val profileListener = db.collection("users").document(uid).addSnapshotListener { snap, error ->
+                if (error != null) status = error.localizedMessage ?: "Unable to load profile"
+                role = snap?.getString("role") ?: "UNSELECTED"
+            }
+            val walletListener = db.collection("wallets").document(uid).addSnapshotListener { snap, _ ->
+                balance = snap?.getLong("balanceUgx") ?: 0L
+            }
+            onDispose { profileListener.remove(); walletListener.remove() }
         }
-        val wallet = db.collection("wallets").document(uid)
-        val walletRegistration = wallet.addSnapshotListener { snap, _ ->
-            balance = snap?.getLong("balanceUgx") ?: 0L
-        }
-        // Listeners are released when the signed-in account changes.
-        awaitDispose { registration.remove(); walletRegistration.remove() }
     }
 
     fun runTask(task: suspend () -> Unit) {

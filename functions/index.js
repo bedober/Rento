@@ -22,7 +22,7 @@ function baseUrl(){
  if(!configured) throw new Error("PESAPAL_BASE_URL is required; sandbox/live mode must be explicit");
  let parsed; try{parsed=new URL(configured);}catch(_){throw new Error("PESAPAL_BASE_URL is invalid");}
  if(parsed.protocol!=="https:"||!["pay.pesapal.com","cybqa.pesapal.com"].includes(parsed.hostname)) throw new Error("PESAPAL_BASE_URL must use an official Pesapal HTTPS API host");
- return configured.replace(/\\/$/,"");
+ return configured.replace(/\/$/, "");
 }
 async function token(){
  const r=await fetch(baseUrl()+"/api/Auth/RequestToken",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({consumer_key:PESAPAL_KEY.value(),consumer_secret:PESAPAL_SECRET.value()})});

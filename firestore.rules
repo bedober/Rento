@@ -15,7 +15,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || admin());
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.role in ["UNSELECTED","TENANT","LANDLORD","CARETAKER"];
+        && request.resource.data.role == "UNSELECTED";
       allow update: if signedIn() && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["walletBalance","kycStatus","nationalId","role","kycStatus","isAdmin","admin","permissions"]);
       allow delete: if admin();
@@ -34,15 +34,15 @@ service cloud.firestore {
     }
     match /properties/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && request.resource.data.landlordId == request.auth.uid));
+      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && request.resource.data.landlordId == request.auth.uid && (request.method == "create" || resource.data.landlordId == request.auth.uid)));
     }
     match /units/{id} {
       allow read: if signedIn();
-      allow write: if signedIn() && (admin() || role() == "LANDLORD");
+      allow create, update, delete: if signedIn() && (admin() || (role() == "LANDLORD" && get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.landlordId == request.auth.uid));
     }
     match /maintenance/{id} {
       allow read: if signedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid || admin());
-      allow create: if signedIn() && request.resource.data.tenantId == request.auth.uid;
+      allow create: if false; // Created through validated callable only.
       allow update: if signedIn() && (resource.data.landlordId == request.auth.uid || admin());
       allow delete: if admin();
     }

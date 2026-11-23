@@ -1,0 +1,17 @@
+{
+  "project_info": {
+    "project_number": "1083161589361",
+    "project_id": "rento-rental-app",
+    "storage_bucket": "rento-rental-app.firebasestorage.app"
+  },
+  "client": [{
+    "client_info": {
+      "mobilesdk_app_id": "1:1083161589361:android:d7bde1ce00000000000000",
+      "android_client_info": { "package_name": "com.siege.rento" }
+    },
+    "oauth_client": [],
+    "api_key": [{ "current_key": "TODO_REPLACE_WITH_FIREBASE_WEB_API_KEY" }],
+    "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+  }],
+  "configuration_version": "1"
+}

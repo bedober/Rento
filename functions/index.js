@@ -128,3 +128,53 @@ exports.sendRentReminders=onSchedule("every day 08:00",async()=>{
  const now=Date.now(); const bills=await db.collection("rent_invoices").where("status","in",["PENDING","OVERDUE"]).get();
  for(const d of bills.docs){const b=d.data(),days=Math.floor((now-Number(b.dueAt||now))/86400000); if([ -3,0,3,7].includes(days)){await sendUser(b.tenantId,"Rent payment reminder","Your rent for "+b.period+" is due. Please open Rento to pay.",{invoiceId:d.id});}}
 });
+
+exports.createProperty=onCall(async req=>{
+ const {uid}=await requireRole(req,["LANDLORD"]);
+ const d=req.data||{}; const name=String(d.name||"").trim(); const type=String(d.type||"");
+ if(name.length<2||name.length>100||!["APARTMENT","HOUSE","HOSTEL","COMMERCIAL","SINGLE_ROOM"].includes(type))throw new HttpsError("invalid-argument","Provide a property name and valid type");
+ const ref=db.collection("properties").doc();
+ const row={id:ref.id,landlordId:uid,name,type,description:String(d.description||"").slice(0,2000),address:String(d.address||"").slice(0,300),latitude:Number.isFinite(Number(d.latitude))?Number(d.latitude):null,longitude:Number.isFinite(Number(d.longitude))?Number(d.longitude):null,photoUrls:Array.isArray(d.photoUrls)?d.photoUrls.slice(0,12):[],createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),archived:false};
+ await ref.create(row); return {propertyId:ref.id};
+});
+exports.createUnit=onCall(async req=>{
+ const {uid}=await requireRole(req,["LANDLORD"]); const d=req.data||{};
+ const propertyId=String(d.propertyId||""); const number=String(d.number||"").trim();
+ const rent=Number(d.monthlyRentUgx),deposit=Number(d.depositUgx||0);
+ if(!propertyId||!number||!Number.isSafeInteger(rent)||rent<0||!Number.isSafeInteger(deposit)||deposit<0)throw new HttpsError("invalid-argument","Invalid unit details");
+ const p=await db.doc("properties/"+propertyId).get(); if(!p.exists||p.get("landlordId")!==uid)throw new HttpsError("permission-denied","Property not owned by landlord");
+ const ref=db.collection("units").doc();
+ await ref.create({id:ref.id,propertyId,landlordId:uid,number,bedrooms:Math.max(0,Number(d.bedrooms)||0),bathrooms:Math.max(0,Number(d.bathrooms)||0),monthlyRentUgx:rent,depositUgx:deposit,status:"VACANT",createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+ return {unitId:ref.id};
+});
+exports.createMaintenanceRequest=onCall(async req=>{
+ const {uid}=await requireRole(req,["TENANT"]); const d=req.data||{};
+ const unitId=String(d.unitId||""),description=String(d.description||"").trim(),priority=String(d.priority||"LOW");
+ if(!unitId||description.length<5||description.length>3000||!["LOW","MEDIUM","URGENT"].includes(priority))throw new HttpsError("invalid-argument","Invalid maintenance request");
+ const unit=await db.doc("units/"+unitId).get(); if(!unit.exists||unit.get("tenantId")!==uid)throw new HttpsError("permission-denied","Unit is not assigned to this tenant");
+ const ref=db.collection("maintenance").doc();
+ await ref.create({id:ref.id,tenantId:uid,landlordId:unit.get("landlordId"),propertyId:unit.get("propertyId"),unitId,description,priority,status:"OPEN",mediaUrls:Array.isArray(d.mediaUrls)?d.mediaUrls.slice(0,5):[],createdAt:FieldValue.serverTimestamp()});
+ await sendUser(unit.get("landlordId"),"New maintenance request",description.slice(0,120),{maintenanceId:ref.id});
+ return {requestId:ref.id};
+});
+exports.createRentInvoice=onCall(async req=>{
+ const {uid}=await requireRole(req,["LANDLORD"]); const d=req.data||{};
+ const unitId=String(d.unitId||""),period=String(d.period||"");
+ if(!/^\\d{4}-\\d{2}$/.test(period))throw new HttpsError("invalid-argument","Period must be YYYY-MM");
+ const unit=await db.doc("units/"+unitId).get(); if(!unit.exists||unit.get("landlordId")!==uid)throw new HttpsError("permission-denied","Unit not owned by landlord");
+ const tenantId=String(unit.get("tenantId")||""); if(!tenantId)throw new HttpsError("failed-precondition","Unit has no assigned tenant");
+ const amount=Number(unit.get("monthlyRentUgx")||0); if(!Number.isSafeInteger(amount)||amount<=0)throw new HttpsError("failed-precondition","Unit rent is invalid");
+ const id=tenantId+"_"+unitId+"_"+period; const ref=db.doc("rent_invoices/"+id);
+ await ref.create({tenantId,landlordId:uid,unitId,period,amountUgx:amount,lateFeeUgx:0,status:"PENDING",createdAt:FieldValue.serverTimestamp(),dueAt:Date.now()+5*86400000});
+ return {invoiceId:id};
+});
+exports.getAdminDashboardStats=onCall(async req=>{
+ await requireRole(req,["SUPER_ADMIN"]);
+ const [users,properties,txs]=await Promise.all([db.collection("users").get(),db.collection("properties").get(),db.collection("wallet_transactions").get()]);
+ const today=new Date(); today.setHours(0,0,0,0); const month=new Date(today.getFullYear(),today.getMonth(),1);
+ let volumeToday=0,volumeMonth=0,failed=0,walletBalance=0;
+ for(const t of txs.docs){const x=t.data(),date=x.createdAt?.toDate?.()||new Date(0);if(x.status==="FAILED")failed++;if(x.type==="TOPUP"&&x.status==="COMPLETED"){if(date>=today)volumeToday+=Number(x.amount||0);if(date>=month)volumeMonth+=Number(x.amount||0);}}
+ const wallets=await db.collection("wallets").get(); for(const w of wallets.docs)walletBalance+=Number(w.get("balanceUgx")||0);
+ const roles=users.docs.reduce((a,d)=>{const k=d.get("role")||"UNSELECTED";a[k]=(a[k]||0)+1;return a;},{});
+ return {totalUsers:users.size,landlords:roles.LANDLORD||0,tenants:roles.TENANT||0,caretakers:roles.CARETAKER||0,totalWalletBalance:walletBalance,pesapalVolumeToday:volumeToday,pesapalVolumeMonth:volumeMonth,failedTransactions:failed,activeProperties:properties.docs.filter(d=>d.get("archived")!==true).length};
+});

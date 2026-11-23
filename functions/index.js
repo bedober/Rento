@@ -13,6 +13,8 @@ const PESAPAL_SECRET=defineSecret("PESAPAL_CONSUMER_SECRET");
 const PESAPAL_BASE=defineSecret("PESAPAL_BASE_URL");
 const AT_KEY=defineSecret("AT_API_KEY");
 const AT_USERNAME=defineSecret("AT_USERNAME");
+const PESAPAL_IPN_URL=defineSecret("PESAPAL_IPN_URL");
+const PESAPAL_CALLBACK_URL=defineSecret("PESAPAL_CALLBACK_URL");
 
 function baseUrl(){return (PESAPAL_BASE.value()||"https://cybqa.pesapal.com/pesapalv3").replace(/\/$/,"");}
 async function token(){
@@ -21,7 +23,7 @@ async function token(){
  const j=await r.json(); if(!j.token) throw new Error("Pesapal token missing"); return j.token;
 }
 async function registerIpn(t){
- const r=await fetch(baseUrl()+"/api/URLSetup/RegisterIPN",{method:"POST",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({url:process.env.PESAPAL_IPN_URL, ipn_notification_type:"GET"})});
+ const r=await fetch(baseUrl()+"/api/URLSetup/RegisterIPN",{method:"POST",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({url:PESAPAL_IPN_URL.value(), ipn_notification_type:"GET"})});
  if(!r.ok) throw new Error("Pesapal IPN registration failed ("+r.status+")");
  const j=await r.json(); if(!j.ipn_id) throw new Error("Pesapal did not return IPN ID"); return j.ipn_id;
 }
@@ -43,12 +45,12 @@ exports.updateAppConfig=onCall(async req=>{
  await requireRole(req,["SUPER_ADMIN"]);
  const allowed=["appName","googleLoginEnabled","facebookLoginEnabled","phoneLoginEnabled","emailLoginEnabled","googleWebClientId","googleAndroidClientId","googleIosClientId","facebookAppId","facebookClientToken","facebookDisplayName","pesapalEnv","pesapalConsumerKey","pesapalConsumerSecret","pesapalIpnId","pesapalFeePercent","atEnv","atApiKey","atUsername","atSenderId","smsTemplates","lateFeePercent","lateFeeAfterDays","caretakerCommission","withdrawalDailyLimit","minTopUp","maxTopUp","maintenanceMode","maintenanceMessage","supportPhone"];
  const data=req.data||{}; const clean={};
- for(const [k,v] of Object.entries(data)){if(!allowed.includes(k)) throw new HttpsError("invalid-argument","Unsupported config key: "+k); clean[k]=v;}
+ for(const [k,v] of Object.entries(data)){if(!allowed.includes(k)) throw new HttpsError("invalid-argument","Unsupported config key: "+k); if(["pesapalConsumerKey","pesapalConsumerSecret","facebookClientToken","atApiKey"].includes(k)) throw new HttpsError("failed-precondition","Provider secrets must be stored in Firebase Secret Manager, not Firestore."); clean[k]=v;}
  if(clean.pesapalConsumerKey||clean.pesapalConsumerSecret||clean.facebookClientToken||clean.atApiKey) logger.info("Admin updated a secret config field");
  clean.updatedAt=FieldValue.serverTimestamp(); clean.updatedBy=req.auth.uid;
  await db.doc("app_config/global").set(clean,{merge:true}); return {success:true};
 });
-exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_BASE]},async req=>{
+exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_BASE,PESAPAL_IPN_URL,PESAPAL_CALLBACK_URL]},async req=>{
  const {uid,user}=await requireRole(req,["LANDLORD","TENANT","CARETAKER"]);
  const amount=Number(req.data?.amount); if(!Number.isSafeInteger(amount)||amount<1000||amount>50000000) throw new HttpsError("invalid-argument","Top-up must be UGX 1,000 to 50,000,000");
  const email=String(req.data?.email||user.email||""); const phone=String(req.data?.phone||user.phone||"");
@@ -56,7 +58,7 @@ exports.createPesapalOrder=onCall({secrets:[PESAPAL_KEY,PESAPAL_SECRET,PESAPAL_B
  const t=await token(); let ipnId=process.env.PESAPAL_IPN_ID;
  if(!ipnId) ipnId=await registerIpn(t);
  const ref="RNT-"+uid.slice(0,8)+"-"+Date.now();
- const origin=process.env.PESAPAL_CALLBACK_URL;
+ const origin=PESAPAL_CALLBACK_URL.value();
  if(!origin) throw new HttpsError("failed-precondition","PESAPAL_CALLBACK_URL is not configured");
  const r=await fetch(baseUrl()+"/api/Transactions/SubmitOrderRequest",{method:"POST",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({id:ref,currency:"UGX",amount,description:"Rento wallet top-up",callback_url:origin,notification_id:ipnId,billing_address:{email_address:email,phone_number:phone,first_name:user.name}})});
  if(!r.ok) throw new HttpsError("unavailable","Pesapal order request failed");

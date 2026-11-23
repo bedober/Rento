@@ -7,11 +7,6 @@ data class RentoUser(
 )
 data class Tenant(val id: String = "", val name: String = "", val phone: String = "", val email: String = "", val unitId: String = "", val landlordId: String = "")
 data class Wallet(val userId: String = "", val balanceUgx: Long = 0L, val currency: String = "UGX")
-data class WalletTransaction(
-    val id: String = "", val userId: String = "", val type: String = "TOPUP", val amount: Long = 0L,
-    val pesapalTrackingId: String? = null, val merchantReference: String? = null,
-    val method: String = "", val status: String = "PENDING", val createdAt: Long = 0L
-)
 data class RentBill(
     val id: String = "", val tenantId: String = "", val landlordId: String = "", val unitId: String = "",
     val period: String = "", val amountUgx: Long = 0L, val lateFeeUgx: Long = 0L,

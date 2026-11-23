@@ -41,3 +41,19 @@ See functions/.env.example for server environment variable names. Real values be
 ## Release checklist
 
 Before production: replace Firebase placeholder; deploy and test rules; configure OAuth SHA fingerprints; validate Pesapal IPN, currency, amount and duplicate notifications in sandbox; implement and test transaction PIN/biometric gating and KYC; obtain payout approval; complete Africa's Talking adapter; run emulator tests and a security review; create a release signing key and protect it outside Git.
+
+
+## Production release gate
+
+A successful debug CI build is not a production release. The signed Android App Bundle workflow is available at **Actions → Signed Android Release → Run workflow** after the repository owner adds these GitHub Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded private upload keystore
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Back up the keystore securely. Losing the Play App Signing upload key can delay future updates. Never commit the keystore or passwords.
+
+Before enabling live payments, configure Firebase Functions secrets from the official Pesapal production merchant account: `PESAPAL_CONSUMER_KEY`, `PESAPAL_CONSUMER_SECRET`, `PESAPAL_BASE_URL` (production API base), `PESAPAL_IPN_URL`, and `PESAPAL_CALLBACK_URL`. Confirm the production IPN is registered and test a real low-value transaction with the merchant. Do not use sandbox credentials in production. Keep withdrawal disabled until Pesapal approves the merchant for disbursements and supplies the payout API contract.
+
+Also complete Firebase production configuration: enable required Auth providers, register release SHA-1/SHA-256 fingerprints, verify Firestore and Storage rules in the Firebase Emulator Suite, deploy Functions/rules, configure App Check and FCM, and run device testing on supported Android versions. The current UI is an authenticated foundation, not a completed end-to-end rental product; role-specific property, lease, invoice, maintenance, reporting and support workflows still require completion and acceptance testing.
